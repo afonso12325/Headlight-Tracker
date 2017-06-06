@@ -1,20 +1,33 @@
  
 import cv2
 import numpy as np
+
+def roi(img, vertices):
+    #blank mask:
+    mask = np.zeros_like(img)
+    # fill the mask
+    cv2.fillPoly(mask, vertices, 255)
+    # now only show the area that is the mask
+    masked = cv2.bitwise_and(img, mask)
+    return masked
+
+
 video = cv2.VideoCapture('vid.mp4')
-fourcc = cv2.cv.CV_FOURCC(*'XVID')
-out = cv2.VideoWriter('output.avi',fourcc, 20.0, (640,480))
+
 while True:
         ret, ori = video.read()
         #ori = cv2.imread('carro6.jpg')
         img = cv2.GaussianBlur(ori,(15,15),0)
         img_gray = cv2.cvtColor(img, cv2.COLOR_BGR2GRAY).astype("float64")
+        img_gray = roi(img_gray,[np.array([[100,720],[200,500],[1080,500],[1180,720]])])
         maxcolor = np.amax(img_gray)
+        if maxcolor == 0:
+                maxcolor = 1
         img_gray*= 255.0/maxcolor
         img_gray = img_gray.astype('uint8')
         maxcolor = np.amax(img_gray)
         mask = cv2.inRange(img_gray, 225,255)
-        contours, hierarchy = cv2.findContours(mask,cv2.RETR_TREE,cv2.CHAIN_APPROX_SIMPLE)
+        _, contours, _ = cv2.findContours(mask,cv2.RETR_TREE,cv2.CHAIN_APPROX_SIMPLE)
         #cv2.drawContours(ori, contours, -1, (0,0,255), 3) 
         filtered_contours = [i for i in contours if(20<cv2.moments(i)["m00"] <150)]
         cars = []
@@ -30,7 +43,7 @@ while True:
                                 try:        
                                         iX = int(M2["m10"] / M2["m00"])
                                         iY = int(M2["m01"] / M2["m00"])
-                                        if(90<abs(cX-iX)<115 and abs(iY-cY)<20):
+                                        if(50<abs(cX-iX)<90 and abs(iY-cY)<20):
                                                 cars.append((c,i,cX,iX,cY,iY))
                                                 del i
                                                 break
@@ -43,9 +56,9 @@ while True:
                          pass
         for car in cars:
                 cv2.rectangle(ori, (min(car[2],car[3])-10, max(car[4],car[5])+10),(max(car[2],car[3])+10, min(car[4],car[5])-10), (0,255,0),7)      
-        out.write(ori)
         if cv2.waitKey(1) & 0xFF == ord('q') and not ret:
                 break
+
+        cv2.imshow('ori',ori)
 video.release()
-out.release()
 cv2.destroyAllWindows()

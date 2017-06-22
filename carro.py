@@ -1,6 +1,9 @@
 import cv2
 import numpy as np
 import sys
+import csv
+from scipy.cluster.vq import vq, kmeans
+
 minDistX = 50
 maxDistX = 90
 maxDistY = 20
@@ -32,7 +35,7 @@ def append_car(X0, Y0, X1, Y1, actual_frame):
             
 def find_car(original_img, masked_img,actual_frame,min_headlight_area = 20, max_headlight_area = 150):
     global cars
-    _, cnts, _ = cv2.findContours(masked_img, cv2.RETR_TREE, cv2.CHAIN_APPROX_SIMPLE)
+    _,cnts, _ = cv2.findContours(masked_img, cv2.RETR_TREE, cv2.CHAIN_APPROX_SIMPLE)
     filt_cnts = [i for i in cnts if(min_headlight_area<cv2.moments(i)["m00"] <max_headlight_area)]
     for cnt0 in filt_cnts:
         M0 = cv2.moments(cnt0)
@@ -67,7 +70,7 @@ def main() :
         video = cv2.VideoCapture('vid.mp4')
         global cars
         frame_number = 0
-        while True:
+        while frame_number < 500:
                 frame_number+=1
                 _, original_img = video.read()
                 #ori = cv2.imread('carro6.jpg')
@@ -83,15 +86,18 @@ def main() :
                 masked_img = cv2.inRange(roi_gray, 225,255)
 
                 find_car( original_img, masked_img, frame_number)
-                print(len([i for i in cars if len(i.prev_positions)>=nOfPos]))
-                for car in cars:
-                        if len(car.prev_positions) >= nOfPos :
-##                            quinas = (car.prev_positions[-1][0] - (maxDistX + minDistX)/100,car.prev_positions[-1][1] - (maxDistY)/100)
+                #print(len([i for i in cars if len(i.prev_positions)>=nOfPos]))
+                actual_pos=[]    
+                for i in cars:
+                    actual_pos.append([float(i.prev_positions[-1][0]),float(i.prev_positions[-1][1])])
+                means = kmeans(actual_pos,4)
+                for j in means[0]:
+##                           quinas = (car.prev_positions[-1][0] - (maxDistX + minDistX)/100,car.prev_positions[-1][1] - (maxDistY)/100)
 ##                            quinai = (car.prev_positions[-1][0] + (maxDistX + minDistX)/100,car.prev_positions[-1][1] + (maxDistY)/100)
-##                            cv2.rectangle(original_img,quinas, quinai, (0,255,0),7)
-                                cv2.circle(original_img, (car.prev_positions[-1][0], car.prev_positions[-1][1]), 3, (0,255,0), 3)
-                if cv2.waitKey(1) & 0xFF == ord('q') and not ret:
-                        break
+##                            cv2.rectangle(original_img,quinas, quinai, (0,255,0),7)]
+                  cv2.circle(original_img, (int(j[0]), int(j[1])), 3, (0,255,0), 3)
+ ##               if cv2.waitKey(1) & 0xFF == ord('q') and not ret:
+  ##                      break
         
                 cv2.imshow('ori',original_img)
         video.release()

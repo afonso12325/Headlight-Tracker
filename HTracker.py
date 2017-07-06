@@ -11,8 +11,8 @@ nOfPos = 20
 frameGap = 10
 minHArea=150
 maxHArea = 600
-video_fps = 30
-meters_per_pixel = 0.09
+videoFps = 30
+metersPerPixel = 0.09
 
 def maskify_HL(original_img, low_white = 225, roi_vertexes=[[0,720],[0,400],[1280,400],[1280,720]], blur=(15,15)):
     img_blur = cv2.GaussianBlur(original_img, blur,0)
@@ -29,7 +29,6 @@ def roi(img, vertices): #creates a region of interest based on the vertices give
     cv2.fillPoly(mask, vertices, 255)
     masked = cv2.bitwise_and(img, mask)
     return masked
-
 class car:
     def __init__(self, X0, Y0, X1, Y1, frame):
         self.last_frame = frame
@@ -38,6 +37,8 @@ class car:
         self.lane = 0
 def append_car(X0, Y0, X1, Y1, actual_frame):
     global cars
+    global minCarDist
+    global frameGap
     flag = True
     center = ((X0+X1)/2, (Y0+Y1)/2)
     for i in range(len(cars)):
@@ -51,7 +52,10 @@ def append_car(X0, Y0, X1, Y1, actual_frame):
         cars.append(new_car) #restricted append to a minimum distance
 def find_cars(original_img, masked_img,actual_frame,min_headlight_area = 20, max_headlight_area = 150):
     global cars
-    _, cnts, _ = cv2.findContours(masked_img, cv2.RETR_TREE, cv2.CHAIN_APPROX_SIMPLE)
+    global minDistX
+    global maxDistX
+    global maxDistY
+    cnts, _ = cv2.findContours(masked_img, cv2.RETR_TREE, cv2.CHAIN_APPROX_SIMPLE)
     filt_cnts = [i for i in cnts if(min_headlight_area<cv2.moments(i)["m00"] <max_headlight_area)]
     for cnt0 in filt_cnts:
         M0 = cv2.moments(cnt0)
@@ -73,20 +77,21 @@ def find_cars(original_img, masked_img,actual_frame,min_headlight_area = 20, max
             pass
         
 
-def print_cars(original_img, colors = [(0,255,0),(255,0,0)]):
+def print_cars(original_img, colors = [(0,255,0),(255,0,0),(255,255,0),(255,0,255)]):
     global cars
+    global nOfPos
     for car in cars:
         if len(car.prev_positions) >= nOfPos :
-            cv2.circle(original_img, (car.prev_positions[-1][0], car.prev_positions[-1][1]), 3, colors[car.lane], 3)
-              
-def find_lanes(original_img, color = (0,0,255)):
+            cv2.circle(original_img, (car.prev_positions[-1][0], car.prev_positions[-1][1]), 3, colors[car.lane], 3)           
+def find_lanes_now(original_img,n_lanes, color = (0,0,255) ):
     global cars
+    global nOfPos
     actual_pos=[]
     try:
         for i in range(len(cars)):
             if len(cars[i].prev_positions) >= nOfPos :
                  actual_pos.append(([float(cars[i].prev_positions[-1][0]),float(cars[i].prev_positions[-1][1])], i))
-        means = kmeans([ac[0] for ac in actual_pos],2)
+        means = kmeans([ac[0] for ac in actual_pos],n_lanes)
         
         lmean =[list(m) for m in means[0]]
         lmean.sort(key = lambda x: x[0])
@@ -101,38 +106,73 @@ def find_lanes(original_img, color = (0,0,255)):
             cv2.circle(original_img, (int(j[0]), int(j[1])), 3, color, 3)
     except:
         pass
+def find_all_lanes(original_img, n_lanes, color = (255,255,255)):
+    global cars
+    global nOfPos
+    vmeans = []
+    for j in range(max([len(car.prev_positions) for car in cars]))[::-1]:
+        actual_pos=[]
+        print j
+        #try:
+        for i in range(len(cars)):
+            if len(cars[i].prev_positions) >= nOfPos and  len(cars[i].prev_positions)<j:
+                 actual_pos.append(([float(cars[i].prev_positions[j][0]),float(cars[i].prev_positions[j][1])], i))
+        means = kmeans([ac[0] for ac in actual_pos],n_lanes)
+        vmeans.append(means)
+        lmean =[list(m) for m in means[0]]
+        lmean.sort(key = lambda x: x[0])
+        
+        try:
+            lane = vq([ac[0] for ac in actual_pos],np.array(lmean))
+            for t in range(len(lane[0])):
+              cars[actual_pos[t][1]].lane = lane[0][t]
+        except:
+            pass
+        for k in means[0]:
+            cv2.circle(original_img, (int(k[0]), int(k[1])), 3, color, 3)
+        #except:
+         #   pass
+        
 def number_of_cars():
     global cars
+    global nOfPos
     return len([car for car in cars if len(car.prev_positions)>=nOfPos])
 def relative_car_flux(frame_number,time_interval = 60):
-    global video_fps
-    frame_interval = time_interval*video_fps
+    global videoFps
+    global nOfPos
+    frame_interval = time_interval*videoFps
     relative_number_of_cars = len([car for car in cars if len(car.prev_positions)>=nOfPos and car.last_frame > frame_number - frame_interval])
     return float(relative_number_of_cars)/time_interval
 def total_car_flux(frame_number):
-    global video_fps
-    return float(video_fps)*number_of_cars()/frame_number
+    global videoFps
+    return float(videoFps)*number_of_cars()/frame_number
 def average_velocity(car):
     global cars
-    global video_fps
+    global videoFps
     try:
-        return (3.6*meters_per_pixel*((car.prev_positions[-1][0]-car.prev_positions[0][0])**2 + (car.prev_positions[-1][1]-car.prev_positions[0][1])**2)**(0.5))*video_fps/(car.last_frame-car.first_frame)
+        return (3.6*metersPerPixel*((car.prev_positions[-1][0]-car.prev_positions[0][0])**2 + (car.prev_positions[-1][1]-car.prev_positions[0][1])**2)**(0.5))*videoFps/(car.last_frame-car.first_frame)
     except:
         return 0
 def inst_velocity(car):
     global cars
-    global video_fps
+    global videoFps
     try:
-    	return (3.6*meters_per_pixel*((car.prev_positions[-1][0]-car.prev_positions[-2][0])**2 + (car.prev_positions[-1][1]-car.prev_positions[-2][1])**2)**(0.5))*video_fps
+    	return (3.6*metersPerPixel*((car.prev_positions[-1][0]-car.prev_positions[-2][0])**2 + (car.prev_positions[-1][1]-car.prev_positions[-2][1])**2)**(0.5))*videoFps
     except:
       return 0
 def car_id(car):
+    global cars
+    global nOfPos
     try:
         return [c for c in cars if len(c.prev_positions)>=nOfPos].index(car)
     except:
         return None
 def main() :
         global cars
+        global nOfPos
+        global minHArea
+        global maxHArea
+        global videoFps
         video = cv2.VideoCapture('vid2.mp4')
         frame_number = 0
         while True:
@@ -140,15 +180,20 @@ def main() :
                 _, original_img = video.read()
                 masked_img = maskify_HL(original_img, blur=(5,5))
                 find_cars( original_img, masked_img, frame_number,minHArea,maxHArea)
-                find_lanes(original_img)
+                find_lanes_now(original_img, 2)
                 print_cars(original_img)
-                print [average_velocity(car) for car in cars]
                 cv2.putText(original_img, '{}'.format(frame_number), (200,200), cv2.FONT_HERSHEY_SIMPLEX, 5, (0,255,0))
-                if frame_number == 30:
-                    cv2.imwrite('frame30.jpg', original_img)
+                for car in cars:
+                    if len(car.prev_positions)>=nOfPos:
+                        print('Carro {}'.format(car_id(car)))
+                        print('  Faixa: {}'.format(car.lane))
+                        print('  Velocidade Media: {} km/h'.format(average_velocity(car)))
+                        print('  Ultima Aparicao Ha {} segundos'.format(float((frame_number - car.last_frame))/videoFps))
+                print('Fluxo Instantaneo de Carros: {} carros/segundo'.format(relative_car_flux(frame_number, 3)))
+                print('Numero Total de Carros: {}'.format(number_of_cars()))              
                 if cv2.waitKey(1) & 0xFF == ord('q') and not ret:
                         break
-                cv2.imshow('ori',original_img)
+                cv2.imshow('ori', original_img)
         video.release()
         cv2.destroyAllWindows()
 main()

@@ -2,17 +2,17 @@ import cv2
 import numpy as np
 import sys
 from scipy.cluster.vq import vq, kmeans
-minDistX = 80
-maxDistX = 150
-maxDistY = 40
+minDistX = 50
+maxDistX = 90
+maxDistY = 20
 minCarDist = 20
 cars = []
-nOfPos = 20
+nOfPos = 10
 frameGap = 10
-minHArea=150
-maxHArea = 600
+minHArea=20
+maxHArea = 150
 video_fps = 30
-
+meters_per_pixel = 0.11
 def maskify_HL(original_img, low_white = 225, roi_vertexes=[[0,720],[0,400],[1280,400],[1280,720]], blur=(15,15)):
     img_blur = cv2.GaussianBlur(original_img, blur,0)
     img_gray = cv2.cvtColor(img_blur, cv2.COLOR_BGR2GRAY).astype("float64")
@@ -28,10 +28,10 @@ def roi(img, vertices): #creates a region of interest based on the vertices give
     cv2.fillPoly(mask, vertices, 255)
     masked = cv2.bitwise_and(img, mask)
     return masked
-
 class car:
     def __init__(self, X0, Y0, X1, Y1, frame):
         self.last_frame = frame
+        self.first_frame = frame
         self.prev_positions = [((X0+X1)/2, (Y0+Y1)/2)]
         self.lane = 0
 def append_car(X0, Y0, X1, Y1, actual_frame):
@@ -71,12 +71,11 @@ def find_cars(original_img, masked_img,actual_frame,min_headlight_area = 20, max
             pass
         
 
-def print_cars(original_img, colors = [(0,255,0),(255,0,0)]):
+def print_cars(original_img, colors = [(0,255,0),(255,0,0),(255,255,0),(255,0,255)]):
     global cars
     for car in cars:
         if len(car.prev_positions) >= nOfPos :
-            cv2.circle(original_img, (car.prev_positions[-1][0], car.prev_positions[-1][1]), 3, colors[car.lane], 3)
-              
+            cv2.circle(original_img, (car.prev_positions[-1][0], car.prev_positions[-1][1]), 3, colors[car.lane], 3)           
 def find_lanes(original_img, color = (0,0,255)):
     global cars
     actual_pos=[]
@@ -84,7 +83,7 @@ def find_lanes(original_img, color = (0,0,255)):
         for i in range(len(cars)):
             if len(cars[i].prev_positions) >= nOfPos :
                  actual_pos.append(([float(cars[i].prev_positions[-1][0]),float(cars[i].prev_positions[-1][1])], i))
-        means = kmeans([ac[0] for ac in actual_pos],2)
+        means = kmeans([ac[0] for ac in actual_pos],4)
         
         lmean =[list(m) for m in means[0]]
         lmean.sort(key = lambda x: x[0])
@@ -110,17 +109,40 @@ def relative_car_flux(frame_number,time_interval = 60):
 def total_car_flux(frame_number):
     global video_fps
     return float(video_fps)*number_of_cars()/frame_number
+def average_velocity(car):
+    global cars
+    global video_fps
+    try:
+        return (3.6*meters_per_pixel*((car.prev_positions[-1][0]-car.prev_positions[0][0])**2 + (car.prev_positions[-1][1]-car.prev_positions[0][1])**2)**(0.5))*video_fps/(car.last_frame-car.first_frame)
+    except:
+        return 0
+def inst_velocity(car):
+    global cars
+    global video_fps
+    try:
+    	return (3.6*meters_per_pixel*((car.prev_positions[-1][0]-car.prev_positions[-2][0])**2 + (car.prev_positions[-1][1]-car.prev_positions[-2][1])**2)**(0.5))*video_fps
+    except:
+      return 0
+def car_id(car):
+    try:
+        return [c for c in cars if len(c.prev_positions)>=nOfPos].index(car)
+    except:
+        return None
 def main() :
         global cars
-        video = cv2.VideoCapture('vid2.mp4')
+        video = cv2.VideoCapture('vid.mp4')
         frame_number = 0
         while True:
                 frame_number+=1
                 _, original_img = video.read()
-                masked_img = maskify_HL(original_img, blur=(5,5))
+                masked_img = maskify_HL(original_img, roi_vertexes = [[100,720],[200,500],[1080,500],[1180,720]])
                 find_cars( original_img, masked_img, frame_number,minHArea,maxHArea)
                 find_lanes(original_img)
                 print_cars(original_img)
+                print [average_velocity(car) for car in cars]
+                cv2.putText(original_img, '{}'.format(frame_number), (200,200), cv2.FONT_HERSHEY_SIMPLEX, 5, (0,255,0))
+                if frame_number == 30:
+                    cv2.imwrite('frame30.jpg', original_img)
                 
                 if cv2.waitKey(1) & 0xFF == ord('q') and not ret:
                         break

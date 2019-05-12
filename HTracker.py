@@ -2,6 +2,9 @@ import cv2
 import numpy as np
 import sys
 from scipy.cluster.vq import vq, kmeans
+import os
+import argparse
+os.environ['OPENCV_IO_MAX_IMAGE_PIXELS']=str(2**64)
 minDistX = 80
 maxDistX = 150
 maxDistY = 40
@@ -80,9 +83,10 @@ def find_cars(original_img, masked_img,actual_frame,min_headlight_area = 20, max
 def print_cars(original_img, colors = [(0,255,0),(255,0,0),(255,255,0),(255,0,255)]):
     global cars
     global nOfPos
+    cv2.rectangle(original_img,(400, 360), (1280, 720), (0,0,255) )
     for car in cars:
         if len(car.prev_positions) >= nOfPos :
-            cv2.circle(original_img, (car.prev_positions[-1][0], car.prev_positions[-1][1]), 3, colors[car.lane], 3)           
+            cv2.circle(original_img, (int(car.prev_positions[-1][0]), int(car.prev_positions[-1][1])), 3, colors[car.lane], 3)           
 def find_lanes_now(original_img,n_lanes, color = (0,0,255) ):
     global cars
     global nOfPos
@@ -112,7 +116,7 @@ def find_all_lanes(original_img, n_lanes, color = (255,255,255)):
     vmeans = []
     for j in range(max([len(car.prev_positions) for car in cars]))[::-1]:
         actual_pos=[]
-        print j
+        print(j)
         #try:
         for i in range(len(cars)):
             if len(cars[i].prev_positions) >= nOfPos and  len(cars[i].prev_positions)<j:
@@ -173,7 +177,12 @@ def main() :
         global minHArea
         global maxHArea
         global videoFps
-        video = cv2.VideoCapture('vid2.mp4')
+        parser = argparse.ArgumentParser(description='Headlight Tracker')
+        parser.add_argument('v', metavar='video_file',
+                            help='path to video file')
+
+        args = parser.parse_args()
+        video = cv2.VideoCapture(args.v)
         frame_number = 0
         while True:
                 frame_number+=1
